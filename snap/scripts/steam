@@ -1,0 +1,181 @@
+#!/bin/bash
+# Copyright (C) 2013-2014 Michael Gilbert <mgilbert@debian.org>
+# License: MIT
+
+# set -e
+# # Display environment for debugging
+# env
+
+needs_update=true
+
+. ~/.last_revision 2>/dev/null || true
+if [ "$SNAP_DESKTOP_LAST_REVISION" = "$SNAP_REVISION" ]; then
+  needs_update=false
+fi
+
+# File we touch to show user has agreed to Steam license
+AGREED=$SNAP_USER_DATA/.agreed
+
+# Steam is a 32-bit binary
+ARCH="i386-linux-gnu"
+# if [ "$SNAP_ARCH" == "amd64" ]; then
+#   ARCH="x86_64-linux-gnu"
+# elif [ "$SNAP_ARCH" == "armhf" ]; then
+#   ARCH="arm-linux-gnueabihf"
+# elif [ "$SNAP_ARCH" == "arm64" ]; then
+#   ARCH="aarch64-linux-gnu"
+# else
+#   ARCH="$SNAP_ARCH-linux-gnu"
+# fi
+
+export_ld_library_path() {
+  LDARCH=$1
+  export LD_LIBRARY_PATH=$SNAP/usr/lib/$LDARCH:$SNAP/lib/$LDARCH:$LD_LIBRARY_PATH
+
+
+  export LD_LIBRARY_PATH=$SNAP/usr/lib/$LDARCH/pulseaudio:$LD_LIBRARY_PATH
+
+  # Mesa Libs
+  export LD_LIBRARY_PATH=$SNAP/usr/lib/$LDARCH/mesa:$LD_LIBRARY_PATH
+  export LD_LIBRARY_PATH=$SNAP/usr/lib/$LDARCH/mesa-egl:$LD_LIBRARY_PATH
+}
+
+export_ld_library_path $ARCH
+#[ "$ARCH" == "x86_64-linux-gnu" ] && export_ld_library_path "i386-linux-gnu"
+
+# XKB config
+export XKB_CONFIG_ROOT=$SNAP/usr/share/X11/xkb
+
+# XDG Config
+export XDG_CONFIG_DIRS=$SNAP/etc/xdg:$XDG_CONFIG_DIRS
+export XDG_CONFIG_DIRS=$SNAP/usr/xdg:$XDG_CONFIG_DIRS
+# Note: this doesn't seem to work, QML's LocalStorage either ignores
+# or fails to use $SNAP_USER_DATA if defined here
+export XDG_DATA_DIRS=$SNAP_USER_DATA:$XDG_DATA_DIRS
+export XDG_DATA_DIRS=$SNAP/usr/share:$XDG_DATA_DIRS
+
+# Workaround in snapd for proprietary nVidia drivers mounts the drivers in
+# /var/lib/snapd/lib/gl that needs to be in LD_LIBRARY_PATH
+export LD_LIBRARY_PATH=/var/lib/snapd/lib/gl:$LD_LIBRARY_PATH
+
+# Not good, needed for fontconfig
+export XDG_DATA_HOME=$SNAP_USER_DATA/usr/share
+mkdir -p $XDG_DATA_HOME
+
+# Set cache folder to local path
+export XDG_CACHE_HOME=$SNAP_USER_DATA/.cache
+mkdir -p $XDG_CACHE_HOME
+
+# Font Config
+export FONTCONFIG_PATH=$SNAP/etc/fonts/conf.d
+export FONTCONFIG_FILE=$SNAP/etc/fonts/fonts.conf
+if [ $needs_update = true ]; then
+  rm -rf $XDG_DATA_HOME/{fontconfig,fonts,fonts-*,themes,.themes}
+  ln -sf $SNAP/usr/share/{fontconfig,fonts,fonts-*,themes} $XDG_DATA_HOME
+  ln -sfn $SNAP/usr/share/themes $SNAP_USER_DATA/.themes
+fi
+
+# Tell libGL where to find the drivers
+export LIBGL_DRIVERS_PATH=$SNAP/usr/lib/$ARCH/dri
+
+# Necessary for the SDK to find the translations directory
+export APP_DIR=$SNAP
+
+# Use GTK styling for running under Unity 7
+export DESKTOP_SESSION=ubuntu
+export XDG_SESSION_DESKTOP=ubuntu
+export XDG_CURRENT_DESKTOP=Unity
+
+#export LIBGL_DEBUG="verbose"
+
+export XLOCALEDIR="$SNAP/usr/share/X11/locale"
+export LOCPATH="$SNAP/usr/lib/locale"
+
+# Gio modules and cache (including gsettings module)
+export GIO_MODULE_DIR=$XDG_CACHE_HOME/gio-modules
+function compile_giomodules {
+  if [ -f $1/glib-2.0/gio-querymodules ]; then
+    GIO_QUERY_MODULES=$1/glib-2.0/gio-querymodules
+  elif [ -f $SNAP/usr/bin/gio-querymodules ]; then
+    GIO_QUERY_MODULES=$SNAP/usr/bin/gio-querymodules
+  fi
+
+  if [ -n "$GIO_QUERY_MODULES" ]; then
+    ln -s $1/gio/modules/*.so $GIO_MODULE_DIR
+    $GIO_QUERY_MODULES $GIO_MODULE_DIR
+  fi
+}
+if [ $needs_update = true ]; then
+  rm -rf $GIO_MODULE_DIR
+  mkdir -p $GIO_MODULE_DIR
+  if [ -d $SNAP/usr/lib/$ARCH/gio/modules ]; then
+    compile_giomodules $SNAP/usr/lib/$ARCH
+  fi
+  if [ -d $SNAP/usr/lib/gio/modules ]; then
+    compile_giomodules $SNAP/usr/lib
+  fi
+fi
+
+# Gdk-pixbuf loaders
+export GDK_PIXBUF_MODULE_FILE=$XDG_CACHE_HOME/gdk-pixbuf-loaders.cache
+if [ -d $SNAP/usr/lib/$ARCH/gdk-pixbuf-2.0/2.10.0/loaders ]; then
+  export GDK_PIXBUF_MODULEDIR=$SNAP/usr/lib/$ARCH/gdk-pixbuf-2.0/2.10.0/loaders
+elif [ -d $SNAP/usr/lib/gdk-pixbuf-2.0/2.10.0/loaders ]; then
+  export GDK_PIXBUF_MODULEDIR=$SNAP/usr/lib/gdk-pixbuf-2.0/2.10.0/loaders
+fi
+
+if [ $needs_update = true ]; then
+  rm -f $GDK_PIXBUF_MODULE_FILE
+  if [ -f $SNAP/usr/lib/$ARCH/gdk-pixbuf-2.0/gdk-pixbuf-query-loaders ]; then
+    $SNAP/usr/lib/$ARCH/gdk-pixbuf-2.0/gdk-pixbuf-query-loaders > $GDK_PIXBUF_MODULE_FILE
+  elif [ -f $SNAP/usr/lib/gdk-pixbuf-2.0/gdk-pixbuf-query-loaders ]; then
+    $SNAP/usr/lib/gdk-pixbuf-2.0/gdk-pixbuf-query-loaders > $GDK_PIXBUF_MODULE_FILE
+  elif [ -f $SNAP/usr/bin/gdk-pixbuf-query-loaders ]; then
+    $SNAP/usr/bin/gdk-pixbuf-query-loaders > $GDK_PIXBUF_MODULE_FILE
+  fi
+fi
+
+[ $needs_update = true ] && echo "SNAP_DESKTOP_LAST_REVISION=$SNAP_REVISION" > ~/.last_revision
+
+if [ ! -f $AGREED ]; then
+  env GTK_PATH=$SNAP/usr/lib/$ARCH/gtk-2.0:$SNAP/usr/lib/gtk-2.0 \
+  gxmessage  \
+     -wrap \
+     -title "Steam License" \
+     -file $SNAP/steam_install_agreement.txt
+  result=$?
+  echo $result
+  if [ $result == 0 ]; then
+    echo "Success"
+    touch $AGREED
+  else
+    echo "Didn't agree to terms"
+    exit 1
+  fi
+fi
+
+# Via https://github.com/ValveSoftware/steam-for-linux/issues/4473#issuecomment-292261451
+# export LD_LIBRARY_PATH=$SNAP_USER_DATA/.steam/steam/ubuntu12_32:$SNAP_USER_DATA/.steam/steam/ubuntu12_32/panorama:$SNAP_USER_DATA/.steam/steam/ubuntu12_32/steam-runtime/i386/lib/i386-linux-gnu:$SNAP_USER_DATA/.steam/steam/ubuntu12_32/steam-runtime/i386/lib:$SNAP_USER_DATA/.steam/steam/ubuntu12_32/steam-runtime/i386/usr/lib/i386-linux-gnu:$SNAP_USER_DATA/.steam/steam/ubuntu12_32/steam-runtime/i386/usr/lib:$SNAP_USER_DATA/.steam/steam/ubuntu12_32/steam-runtime/amd64/lib/x86_64-linux-gnu:$SNAP_USER_DATA/.steam/steam/ubuntu12_32/steam-runtime/amd64/lib:$SNAP_USER_DATA/.steam/steam/ubuntu12_32/steam-runtime/amd64/usr/lib/x86_64-linux-gnu:$SNAP_USER_DATA/.steam/steam/ubuntu12_32/steam-runtime/amd64/usr/lib:$SNAP_USER_DATA/.steam/steam/ubuntu12_32/steam:$LD_LIBRARY_PATH
+
+# Below came from the deb of steam, unchanged other than config
+real=$SNAP/usr/games/steam.real
+config=$SNAP_USER_DATA/.steam
+ubuntu32=$config/ubuntu12_32
+exe=$ubuntu32/steam
+
+
+snapcraft_preload="$SNAP/lib/libsnapcraft-preload.so"
+snapcraft_preload32="$SNAP/lib/libsnapcraft-preload32.so"
+libstdcplusplus="$SNAP/usr/lib/$ARCH/libstdc++.so.6"
+libfontconfig="$SNAP/usr/lib/$ARCH/libfontconfig.so.1"
+
+# launch steam / do an initial update when the exe does not already exist
+test ! -d $config && rm -rf $config && mkdir -p $config || true
+test ! -x $config/steam.sh && rm -rf $config/package $exe || true
+test ! -d $ubuntu32 && rm -rf $ubuntu32 && mkdir -p $ubuntu32 || true
+test ! -x $exe && rm -rf $exe && cp $real $exe && \
+  env LD_PRELOAD="$snapcraft_preload32:$snapcraft_preload:$libstdcplusplus" \
+  $ubuntu32/steam || true
+test -x $config/steam.sh && \
+  env LD_PRELOAD="$snapcraft_preload32:$snapcraft_preload:$libstdcplusplus:$libfontconfig" \
+  $config/steam.sh "$@"

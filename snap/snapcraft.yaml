@@ -1,15 +1,90 @@
-name: my-snap-name # you probably want to 'snapcraft register <name>'
-version: '0.1' # just for humans, typically '1.2+git' or '1.3.2'
-summary: Single-line elevator pitch for your amazing snap # 79 char long summary
+name: steam
+version: '1.0.0.48'
+summary: Valve's Steam digital software delivery system
 description: |
-  This is my-snap's description. You have a paragraph or two to tell the
-  most important story about your snap. Keep it under 100 words though,
-  we live in tweetspace and your description wants to look good in the snap
-  store.
+  Steam (http://www.steampowered.com) is a software content delivery system
+  developed by Valve software (http://www.valvesoftware.com).
 
-confinement: devmode # use 'strict' once you have the right plugs and slots
+grade: stable # must be 'stable' to release into candidate/stable channels
+confinement: strict # use 'strict' once you have the right plugs and slots
+
+plugs:
+  browser-sandbox:
+    interface: browser-support
+    allow-sandbox: true
+
+apps:
+  steam:
+    command: steam
+    plugs:
+      - bluetooth-control
+      - browser-support
+      - browser-sandbox
+      - gsettings
+      - home
+      - joystick
+      - mount-observe
+      - network
+      - network-bind # for hosting multiplayer games
+      - opengl
+      - process-control
+      - pulseaudio
+      - removable-media
+      - screen-inhibit-control
+      - system-observe
+      - unity7
+      - upower-observe
+      - x11
 
 parts:
-  my-part:
-    # See 'snapcraft plugins'
-    plugin: nil
+  scripts:
+    plugin: dump
+    source: snap/scripts
+    prepare: |
+      dpkg --add-architecture i386
+
+  steam:
+    after: [scripts]
+    plugin: dump
+    source: http://archive.ubuntu.com/ubuntu/pool/multiverse/s/steam/steam_1.0.0.48-1ubuntu4_i386.deb
+    stage-packages:
+      - awk
+      - curl
+      - fonts-dejavu-core
+      - fonts-droid-fallback
+      - grep
+      - gxmessage:i386
+      - hicolor-icon-theme
+      - language-pack-en-base
+      - libc6:i386
+      - libcanberra-gtk-module:i386
+      - libexpat1:i386
+      - libfontconfig:i386
+      - libfreetype6:i386
+      - libgl1-mesa-dri:i386
+      - libgl1-mesa-glx:i386
+      - libglapi-mesa:i386
+      - libglib2.0-0:i386
+      - libgpg-error0:i386
+      - libstdc++6:i386
+      - libtxc-dxtn0:i386
+      - libudev1:i386
+      - libx11-6:i386
+      - libx11-xcb1:i386
+      - libxau6:i386
+      - libxcb-dri3-0:i386
+      - libxcb-glx0:i386
+      - libxcb-present0:i386
+      - libxcb-sync1:i386
+      - libxcb1:i386
+      - libxdamage1:i386
+      - libxdmcp6:i386
+      - libxext6:i386
+      - libxfixes3:i386
+      - libxinerama1:i386
+      - libxshmfence1:i386
+      - locales-all
+      - xz-utils:i386
+      - zlib1g:i386
+      - libgl1-mesa-dri
+      - libgl1-mesa-glx
